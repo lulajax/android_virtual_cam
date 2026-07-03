@@ -1,0 +1,41 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    compileSdk 31
+
+    defaultConfig {
+        applicationId "com.example.vcam"
+        minSdk 21
+        targetSdk 26
+        versionCode 28
+        versionName "4.4"
+
+        testInstrumentationRunner "android.support.test.runner.AndroidJUnitRunner"
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+}
+
+// D8 3.1.51 写 dex 时会在个别匿名类的调试信息上踩空指针（graph.W0.<init> NPE）。
+// 剥掉调试信息即可绕过；对 Xposed 模块无实质影响。
+tasks.withType(JavaCompile).configureEach {
+    options.debug = false
+    options.debugOptions.debugLevel = "none"
+}
+
+dependencies {
+    compileOnly 'de.robv.android.xposed:api:82'
+    compileOnly 'de.robv.android.xposed:api:82:sources'
+
+}

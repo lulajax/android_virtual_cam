@@ -1,0 +1,337 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@color/background_grey">
+
+    <!-- 内容区（两页切换） -->
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1">
+
+        <!-- ===== 合成页 ===== -->
+        <ScrollView
+            android:id="@+id/page_composite"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:fillViewport="true">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="14dp">
+
+                <!-- 标题 -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:background="@drawable/card_bg"
+                    android:padding="18dp"
+                    android:layout_marginBottom="12dp"
+                    android:elevation="1dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="虚拟摄像头 · 合成模式"
+                        android:textSize="20sp"
+                        android:textStyle="bold"
+                        android:textColor="@color/text_primary" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="真实相机当背景，你的图片/视频当挂件，合成后推给 App"
+                        android:textSize="13sp"
+                        android:textColor="@color/text_secondary"
+                        android:paddingTop="4dp" />
+                </LinearLayout>
+
+                <!-- 合成主卡 -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:background="@drawable/card_bg"
+                    android:padding="18dp"
+                    android:layout_marginBottom="12dp"
+                    android:elevation="1dp">
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="① 目标 App（选完自动校正相机方向）"
+                        android:textSize="15sp"
+                        android:textStyle="bold"
+                        android:textColor="@color/text_primary"
+                        android:paddingBottom="6dp" />
+
+                    <TextView
+                        android:id="@+id/tv_target"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="点下方按钮选择"
+                        android:textSize="14sp"
+                        android:textColor="@color/text_primary"
+                        android:background="@drawable/select_box"
+                        android:padding="12dp" />
+
+                    <Button
+                        android:id="@+id/btn_pick_app"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="选择目标 App"
+                        android:textColor="@color/accent_purple"
+                        android:backgroundTint="@color/accent_purple_light"
+                        android:layout_marginTop="8dp"
+                        android:layout_marginBottom="16dp" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="② 选挂件（图片 / 视频）"
+                        android:textSize="15sp"
+                        android:textStyle="bold"
+                        android:textColor="@color/text_primary"
+                        android:paddingBottom="6dp" />
+
+                    <Button
+                        android:id="@+id/btn_pick_overlay"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="选择挂件"
+                        android:textColor="@color/accent_purple"
+                        android:backgroundTint="@color/accent_purple_light" />
+
+                    <TextView
+                        android:id="@+id/tv_overlay"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="未选挂件"
+                        android:textSize="13sp"
+                        android:textColor="@color/text_secondary"
+                        android:paddingTop="4dp"
+                        android:paddingBottom="14dp" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="③ 拖动挂件调位置，滑块调大小"
+                        android:textSize="15sp"
+                        android:textStyle="bold"
+                        android:textColor="@color/text_primary"
+                        android:paddingBottom="8dp" />
+
+                    <FrameLayout
+                        android:id="@+id/canvas"
+                        android:layout_width="180dp"
+                        android:layout_height="320dp"
+                        android:layout_gravity="center_horizontal"
+                        android:background="@drawable/preview_bg">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_gravity="center"
+                            android:text="这里是\n真实相机画面"
+                            android:gravity="center"
+                            android:textColor="#66FFFFFF"
+                            android:textSize="13sp" />
+
+                        <ImageView
+                            android:id="@+id/overlay_thumb"
+                            android:layout_width="70dp"
+                            android:layout_height="120dp"
+                            android:scaleType="fitXY"
+                            android:visibility="gone" />
+                    </FrameLayout>
+
+                    <TextView
+                        android:id="@+id/tv_overlay_pos"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="尺寸 35%"
+                        android:textSize="12sp"
+                        android:textColor="@color/text_secondary"
+                        android:paddingTop="10dp" />
+
+                    <SeekBar
+                        android:id="@+id/sb_size"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:max="90"
+                        android:progress="35" />
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:layout_marginTop="4dp">
+
+                        <Button
+                            android:id="@+id/btn_cam_rot"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="相机旋转（90°）"
+                            android:textColor="@color/accent_purple"
+                            android:backgroundTint="@color/accent_purple_light" />
+
+                        <Button
+                            android:id="@+id/btn_ov_rot"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:layout_marginStart="10dp"
+                            android:text="挂件旋转（0°）"
+                            android:textColor="@color/accent_purple"
+                            android:backgroundTint="@color/accent_purple_light" />
+                    </LinearLayout>
+
+                    <Button
+                        android:id="@+id/btn_apply_composite"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="应用合成到目标 App"
+                        android:textSize="16sp"
+                        android:textStyle="bold"
+                        android:textColor="@color/white"
+                        android:background="@drawable/btn_primary_bg"
+                        android:padding="14dp"
+                        android:layout_marginTop="14dp" />
+
+                    <TextView
+                        android:id="@+id/tv_composite_status"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text=""
+                        android:textSize="13sp"
+                        android:textColor="@color/success_green"
+                        android:paddingTop="10dp" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="应用后强制停止目标 App 再重开生效。抖音开直播/拍摄方向不同，切过去点几下“相机旋转”再应用即可。"
+                        android:textSize="12sp"
+                        android:textColor="@color/text_secondary"
+                        android:paddingTop="6dp" />
+                </LinearLayout>
+            </LinearLayout>
+        </ScrollView>
+
+        <!-- ===== 设置页 ===== -->
+        <ScrollView
+            android:id="@+id/page_settings"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:fillViewport="true"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="14dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:background="@drawable/card_bg"
+                    android:elevation="1dp">
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="设置"
+                        android:textSize="18sp"
+                        android:textStyle="bold"
+                        android:textColor="@color/text_primary"
+                        android:padding="18dp"
+                        android:paddingBottom="8dp" />
+
+                    <View
+                        android:layout_width="match_parent"
+                        android:layout_height="1dp"
+                        android:background="@color/divider_color" />
+
+                    <Switch
+                        android:id="@+id/switch3"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="播放视频原声"
+                        android:paddingStart="18dp"
+                        android:paddingEnd="18dp"
+                        android:paddingTop="14dp"
+                        android:paddingBottom="14dp"
+                        android:minHeight="56dp"
+                        android:textSize="15sp"
+                        android:textColor="@color/text_primary" />
+
+                    <View
+                        android:layout_width="match_parent"
+                        android:layout_height="1dp"
+                        android:layout_marginStart="18dp"
+                        android:background="@color/divider_color" />
+
+                    <Switch
+                        android:id="@+id/switch2"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="临时停用模块（开=停用）"
+                        android:paddingStart="18dp"
+                        android:paddingEnd="18dp"
+                        android:paddingTop="14dp"
+                        android:paddingBottom="14dp"
+                        android:minHeight="56dp"
+                        android:textSize="15sp"
+                        android:textColor="@color/text_primary" />
+                </LinearLayout>
+            </LinearLayout>
+        </ScrollView>
+    </FrameLayout>
+
+    <!-- ===== 底部 Tab ===== -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="@color/divider_color" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:background="@color/white">
+
+        <TextView
+            android:id="@+id/tab_composite"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="合成"
+            android:gravity="center"
+            android:paddingTop="14dp"
+            android:paddingBottom="14dp"
+            android:textSize="15sp"
+            android:textStyle="bold"
+            android:textColor="@color/accent_purple" />
+
+        <TextView
+            android:id="@+id/tab_settings"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="设置"
+            android:gravity="center"
+            android:paddingTop="14dp"
+            android:paddingBottom="14dp"
+            android:textSize="15sp"
+            android:textColor="@color/text_secondary" />
+    </LinearLayout>
+
+</LinearLayout>
