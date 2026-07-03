@@ -12,7 +12,9 @@ import android.graphics.BitmapFactory;
 import android.graphics.SurfaceTexture;
 import android.hardware.Camera;
 import android.hardware.camera2.CameraCaptureSession;
+import android.hardware.camera2.CameraCharacteristics;
 import android.hardware.camera2.CameraDevice;
+import android.hardware.camera2.CameraManager;
 import android.hardware.camera2.CaptureFailure;
 import android.hardware.camera2.CaptureRequest;
 import android.hardware.camera2.params.InputConfiguration;
@@ -86,6 +88,9 @@ public class HookMain implements IXposedHookLoadPackage {
     public static MediaPlayer c2_player_1;
     public static Surface c2_virtual_surface;
     public static SurfaceTexture c2_virtual_surfaceTexture;
+    public static String c2_cameraId;                 // 当前打开的相机 id（前/后摄区分）
+    public static Object c2_cameraManager;             // 当前 CameraManager 实例（查朝向用）
+    public static int baseSensorOrientation = -1;      // 首个打开摄像头的 sensor 朝向（补偿基准）
     public boolean need_recreate;
     public static CameraDevice.StateCallback c2_state_cb;
     public static CaptureRequest.Builder c2_builder;
@@ -157,6 +162,9 @@ public class HookMain implements IXposedHookLoadPackage {
                 if (param.args[1] == null) {
                     return;
                 }
+                // 记录当前相机 id 与 manager（onOpened 重建 compositor 时读朝向用），即使下方 return 也先记
+                if (param.args[0] instanceof String) c2_cameraId = (String) param.args[0];
+                c2_cameraManager = param.thisObject;
                 if (param.args[1].equals(c2_state_cb)) {
                     return;
                 }
@@ -193,6 +201,8 @@ public class HookMain implements IXposedHookLoadPackage {
                     if (param.args[2] == null) {
                         return;
                     }
+                    if (param.args[0] instanceof String) c2_cameraId = (String) param.args[0];
+                    c2_cameraManager = param.thisObject;
                     if (param.args[2].equals(c2_state_cb)) {
                         return;
                     }
@@ -917,6 +927,25 @@ public class HookMain implements IXposedHookLoadPackage {
         return r;
     }
 
+    /** 读当前 cameraId 的传感器朝向：{相对首个摄像头的补偿角, 是否前摄(1/0)}。 */
+    private int[] readCamOrientation() {
+        int sensorOri = 0, isFront = 0;
+        try {
+            if (c2_cameraManager instanceof CameraManager && c2_cameraId != null) {
+                CameraCharacteristics cc = ((CameraManager) c2_cameraManager).getCameraCharacteristics(c2_cameraId);
+                Integer so = cc.get(CameraCharacteristics.SENSOR_ORIENTATION);
+                Integer lf = cc.get(CameraCharacteristics.LENS_FACING);
+                if (so != null) sensorOri = so;
+                if (lf != null && lf == CameraCharacteristics.LENS_FACING_FRONT) isFront = 1;
+            }
+        } catch (Throwable t) {
+            XposedBridge.log("【VCAM】【comp】读相机朝向失败：" + t);
+        }
+        if (baseSensorOrientation < 0) baseSensorOrientation = sensorOri;
+        int extra = (((sensorOri - baseSensorOrientation) % 360) + 360) % 360;
+        return new int[]{extra, isFront};
+    }
+
     private Surface create_virtual_surface() {
         if (need_recreate) {
             if (c2_virtual_surfaceTexture != null) {
@@ -933,9 +962,10 @@ public class HookMain implements IXposedHookLoadPackage {
             if (isComposite()) {
                 if (compositor != null) { compositor.stop(); compositor = null; }
                 compositor = new CameraCompositor();
-                compositor.prepareCamera();
+                int[] ori = readCamOrientation();
+                compositor.prepareCamera(ori[0], ori[1] == 1);
                 c2_virtual_surface = compositor.getCameraSurface();
-                XposedBridge.log("【VCAM】【comp】合成模式：真实相机接入合成器");
+                XposedBridge.log("【VCAM】【comp】合成模式：真实相机接入合成器 extraRot=" + ori[0] + " front=" + (ori[1] == 1));
             }
         } else {
             if (c2_virtual_surface == null) {

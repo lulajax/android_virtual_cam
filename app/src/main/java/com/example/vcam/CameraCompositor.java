@@ -56,6 +56,9 @@ public class CameraCompositor implements SurfaceTexture.OnFrameAvailableListener
     private final float[] ovStTmp = new float[16];
     private float ox = 0.6f, oy = 0.02f, ow = 0.38f, oh = 0.38f;   // 归一化 rect（左上原点）
     private int outRot = 0;                                          // 整体旋转角（扶正相机+挂件）
+    private volatile int camExtraRot = 0;                          // 前后摄 sensor 朝向差补偿（只作用于相机背景）
+    private volatile boolean camMirror = false;                    // 前摄水平镜像（只作用于相机背景）
+    private final float[] camMvp = new float[16];                   // 相机背景专用 MVP
     private final float[] ovMvp = new float[16];
     private final float[] rotM = new float[16];
     private final float[] ts = new float[16];
@@ -83,8 +86,12 @@ public class CameraCompositor implements SurfaceTexture.OnFrameAvailableListener
             "precision mediump float;\nvarying vec2 vTex;\nuniform sampler2D sTex;\n" +
             "void main(){ gl_FragColor = texture2D(sTex, vTex); }\n";
 
-    /** 会话配置前调用：建 EGL + 相机 OES 纹理，产出相机输入 surface。 */
-    public void prepareCamera() {
+    /** 会话配置前调用：建 EGL + 相机 OES 纹理，产出相机输入 surface。
+     *  @param extraRot 当前摄像头相对首个摄像头的 sensor 朝向补偿角（前后摄切换用）
+     *  @param mirror   是否水平镜像（前摄用） */
+    public void prepareCamera(final int extraRot, final boolean mirror) {
+        this.camExtraRot = ((extraRot % 360) + 360) % 360;
+        this.camMirror = mirror;
         glThread = new HandlerThread("cam-comp");
         glThread.start();
         glHandler = new Handler(glThread.getLooper());
@@ -222,14 +229,19 @@ public class CameraCompositor implements SurfaceTexture.OnFrameAvailableListener
             GLES20.glClearColor(0, 0, 0, 1);
             GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT);
 
-            // 整体旋转矩阵（扶正相机+挂件）
+            // 整体旋转矩阵（挂件用）
             Matrix.setIdentityM(rotM, 0);
             Matrix.rotateM(rotM, 0, outRot, 0, 0, 1);
+
+            // 相机背景专用 MVP：整体旋转 + 前后摄 sensor 朝向补偿 + 前摄镜像
+            Matrix.setIdentityM(camMvp, 0);
+            Matrix.rotateM(camMvp, 0, outRot + camExtraRot, 0, 0, 1);
+            if (camMirror) Matrix.scaleM(camMvp, 0, -1, 1, 1);
 
             // 背景：真实相机（OES 全屏）
             GLES20.glUseProgram(camProgram);
             bindQuad(camPos, camTex);
-            GLES20.glUniformMatrix4fv(camU_mvp, 1, false, rotM, 0);
+            GLES20.glUniformMatrix4fv(camU_mvp, 1, false, camMvp, 0);
             GLES20.glUniformMatrix4fv(camU_st, 1, false, camMatrix, 0);
             GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
             GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, camTexId);
