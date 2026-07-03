@@ -1,9 +1,9 @@
-name: Android Build
+name: Build & Release
 
 on:
   push:
-  pull_request:
-  workflow_dispatch:
+    tags: ['v*']          # 推送 v* 标签 → 构建并发布 Release
+  workflow_dispatch:       # 手动触发 → 只出 artifact，方便随时拿包
 
 jobs:
   build:
@@ -16,103 +16,66 @@ jobs:
       ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
       ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up JDK 11
+      - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '11'
+          java-version: '17'     # 项目须用 JDK 17（Gradle 7.5 不支持 JDK 21）
           cache: gradle
 
-      - name: Make Gradle wrapper executable
-        run: chmod +x gradlew
+      - run: chmod +x gradlew
 
-      - name: Validate signing secrets
+      - name: 判断是否配置了签名密钥
         id: signing
         run: |
-          missing=()
-          for var in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
-            if [ -z "${!var}" ]; then
-              missing+=("$var")
-            fi
-          done
-
-          if [ ${#missing[@]} -gt 0 ]; then
-            echo "Signing secrets are not fully configured: ${missing[*]}" >&2
-            echo "signing_ready=false" >> "$GITHUB_OUTPUT"
+          if [ -n "$ANDROID_KEYSTORE_BASE64" ] && [ -n "$ANDROID_KEYSTORE_PASSWORD" ] \
+             && [ -n "$ANDROID_KEY_ALIAS" ] && [ -n "$ANDROID_KEY_PASSWORD" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
           else
-            echo "signing_ready=true" >> "$GITHUB_OUTPUT"
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::未配置签名密钥，改用 debug 签名构建（个人使用可直接安装）"
           fi
 
-      - name: Skip signed build (missing secrets)
-        if: steps.signing.outputs.signing_ready != 'true'
-        run: echo 'Skipping signed release build because required signing secrets are not configured.'
-
-      - name: Decode release keystore
-        if: steps.signing.outputs.signing_ready == 'true'
+      - name: 构建签名 Release APK
+        if: steps.signing.outputs.ready == 'true'
         run: |
           echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > release.keystore
-
-      - name: Build signed release with Gradle
-        if: steps.signing.outputs.signing_ready == 'true'
-        env:
-          ANDROID_KEYSTORE_PATH: ${{ github.workspace }}/release.keystore
-        run: |
-          for var in ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
-            if [ -z "${!var}" ]; then
-              echo "$var secret is not configured." >&2
-              exit 1
-            fi
-          done
           ./gradlew --no-daemon clean assembleRelease \
-            -Pandroid.injected.signing.store.file="$ANDROID_KEYSTORE_PATH" \
+            -Pandroid.injected.signing.store.file="$PWD/release.keystore" \
             -Pandroid.injected.signing.store.password="$ANDROID_KEYSTORE_PASSWORD" \
             -Pandroid.injected.signing.key.alias="$ANDROID_KEY_ALIAS" \
             -Pandroid.injected.signing.key.password="$ANDROID_KEY_PASSWORD"
+          echo "APK=app/build/outputs/apk/release/app-release.apk" >> "$GITHUB_ENV"
 
-      - name: Verify APK was built
-        if: steps.signing.outputs.signing_ready == 'true'
+      - name: 构建 Debug APK（未配签名密钥时）
+        if: steps.signing.outputs.ready != 'true'
         run: |
-          if [ ! -f app/build/outputs/apk/release/app-release.apk ]; then
-            echo "Error: APK file not found at app/build/outputs/apk/release/app-release.apk" >&2
-            exit 1
-          fi
-          echo "APK built successfully"
-          ls -lh app/build/outputs/apk/release/
+          ./gradlew --no-daemon clean assembleDebug
+          echo "APK=app/build/outputs/apk/debug/app-debug.apk" >> "$GITHUB_ENV"
 
-      - name: Get version info
-        if: steps.signing.outputs.signing_ready == 'true' && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+      - name: 读取版本号
         id: version
         run: |
-          VERSION_NAME=$(grep "versionName" app/build.gradle | awk '{print $2}' | tr -d '"')
-          VERSION_CODE=$(grep "versionCode" app/build.gradle | awk '{print $2}')
-          echo "version_name=${VERSION_NAME}" >> "$GITHUB_OUTPUT"
-          echo "version_code=${VERSION_CODE}" >> "$GITHUB_OUTPUT"
-          echo "Version: ${VERSION_NAME} (${VERSION_CODE})"
+          VN=$(grep versionName app/build.gradle | head -1 | awk '{print $2}' | tr -d '"')
+          echo "name=$VN" >> "$GITHUB_OUTPUT"
 
-      - name: Publish signed APK to GitHub Release
-        if: steps.signing.outputs.signing_ready == 'true' && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v1
+      - name: 上传 artifact
+        uses: actions/upload-artifact@v4
         with:
-          files: app/build/outputs/apk/release/app-release.apk
-          name: Android Virtual Cam v${{ steps.version.outputs.version_name }}
+          name: vcam-apk
+          path: ${{ env.APK }}
+
+      - name: 发布 GitHub Release（打 tag 时）
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.APK }}
+          name: VCAM ${{ github.ref_name }}
           body: |
-            ## Android Virtual Cam Release
-            
-            **Version:** ${{ steps.version.outputs.version_name }} (Build ${{ steps.version.outputs.version_code }})
-            
-            ### 下载 / Download
-            - 签名APK / Signed APK: `app-release.apk`
-            
-            ### 安装说明 / Installation
-            1. 下载签名APK文件 / Download the signed APK file
-            2. 在Android设备上安装 / Install on your Android device
-            3. 在Xposed框架中启用模块 / Enable the module in Xposed framework
-            
-            详细使用说明请查看 [README](https://github.com/${{ github.repository }}/blob/main/README.md)
-            
-            For detailed usage instructions, please see the [README](https://github.com/${{ github.repository }}/blob/main/README.md)
+            **VCAM ${{ steps.version.outputs.name }}** · 真实相机 + 挂件合成模式的 Xposed 虚拟摄像头
+
+            安装与用法见 [README](https://github.com/${{ github.repository }}/blob/master/README.md)。
           draft: false
           prerelease: false
