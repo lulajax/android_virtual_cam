@@ -13,3 +13,6 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+# 构建产物（改由 CI 产出，不入库）
+/app/release/
