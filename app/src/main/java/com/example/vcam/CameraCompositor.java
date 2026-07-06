@@ -167,6 +167,9 @@ public class CameraCompositor implements SurfaceTexture.OnFrameAvailableListener
                     Matrix.translateM(rot90tex, 0, 0.5f, 0.5f, 0);
                     Matrix.rotateM(rot90tex, 0, ((ovRot % 360) + 360) % 360, 0, 0, 1);
                     Matrix.translateM(rot90tex, 0, -0.5f, -0.5f, 0);
+                    // 先释放上一次的挂件资源，避免翻转反复调用 startOutput 泄漏
+                    // （尤其 MediaPlayer 占着硬件解码器，堆几次就耗尽 → 卡死）
+                    releaseOverlay();
                     overlayIsVideo = isVideo;
                     if (overlayPath != null && isVideo) {
                         // 视频挂件：OES 纹理 + SurfaceTexture，MediaPlayer 循环静音播放
@@ -299,6 +302,16 @@ public class CameraCompositor implements SurfaceTexture.OnFrameAvailableListener
         quad.position(2);
         GLES20.glVertexAttribPointer(texLoc, 2, GLES20.GL_FLOAT, false, 16, quad);
         GLES20.glEnableVertexAttribArray(texLoc);
+    }
+
+    /** 释放挂件资源（视频 MediaPlayer/SurfaceTexture/纹理 或图片纹理）。须在 GL 线程、上下文 current 时调用。 */
+    private void releaseOverlay() {
+        try { if (overlayPlayer != null) { overlayPlayer.stop(); overlayPlayer.release(); overlayPlayer = null; } } catch (Exception ignored) {}
+        try { if (overlayVideoSurface != null) { overlayVideoSurface.release(); overlayVideoSurface = null; } } catch (Exception ignored) {}
+        try { if (overlayVideoST != null) { overlayVideoST.release(); overlayVideoST = null; } } catch (Exception ignored) {}
+        if (overlayVideoTex >= 0) { try { GLES20.glDeleteTextures(1, new int[]{overlayVideoTex}, 0); } catch (Exception ignored) {} overlayVideoTex = -1; }
+        if (overlayTexId >= 0) { try { GLES20.glDeleteTextures(1, new int[]{overlayTexId}, 0); } catch (Exception ignored) {} overlayTexId = -1; }
+        overlayHasFrame = false;
     }
 
     public void stop() {
