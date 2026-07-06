@@ -142,6 +142,12 @@ public class CameraCompositor implements SurfaceTexture.OnFrameAvailableListener
 
     public Surface getCameraSurface() { return camSurface; }
 
+    /** 前后摄切换时更新相机背景朝向（只改 volatile 字段，不碰 GL 线程，避免卡顿）。 */
+    public void updateCameraOrientation(int extraRot, boolean mirror) {
+        this.camExtraRot = ((extraRot % 360) + 360) % 360;
+        this.camMirror = mirror;
+    }
+
     /** build 时调用：拿到 app 显示 surface，建窗口 EGLSurface，加载挂件，开始合成。 */
     public void startOutput(final Surface appSurface, final String overlayPath, final boolean isVideo, final float x, final float y, final float w, final float h, final int rot, final int ovRot) {
         glHandler.post(new Runnable() {

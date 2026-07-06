@@ -932,11 +932,14 @@ public class HookMain implements IXposedHookLoadPackage {
         int sensorOri = 0, isFront = 0;
         try {
             if (c2_cameraManager instanceof CameraManager && c2_cameraId != null) {
-                CameraCharacteristics cc = ((CameraManager) c2_cameraManager).getCameraCharacteristics(c2_cameraId);
+                CameraManager cm = (CameraManager) c2_cameraManager;
+                CameraCharacteristics cc = cm.getCameraCharacteristics(c2_cameraId);
                 Integer so = cc.get(CameraCharacteristics.SENSOR_ORIENTATION);
                 Integer lf = cc.get(CameraCharacteristics.LENS_FACING);
                 if (so != null) sensorOri = so;
                 if (lf != null && lf == CameraCharacteristics.LENS_FACING_FRONT) isFront = 1;
+                // base 固定取后摄 sensor 朝向（枚举确定，与开机先开哪个摄像头无关）
+                if (baseSensorOrientation < 0) baseSensorOrientation = findBackSensorOrientation(cm, sensorOri);
             }
         } catch (Throwable t) {
             XposedBridge.log("【VCAM】【comp】读相机朝向失败：" + t);
@@ -944,6 +947,21 @@ public class HookMain implements IXposedHookLoadPackage {
         if (baseSensorOrientation < 0) baseSensorOrientation = sensorOri;
         int extra = (((sensorOri - baseSensorOrientation) % 360) + 360) % 360;
         return new int[]{extra, isFront};
+    }
+
+    /** 枚举摄像头，返回后摄 sensor 朝向；找不到则用 fallback。 */
+    private int findBackSensorOrientation(CameraManager cm, int fallback) {
+        try {
+            for (String id : cm.getCameraIdList()) {
+                CameraCharacteristics c = cm.getCameraCharacteristics(id);
+                Integer lf = c.get(CameraCharacteristics.LENS_FACING);
+                if (lf != null && lf == CameraCharacteristics.LENS_FACING_BACK) {
+                    Integer so = c.get(CameraCharacteristics.SENSOR_ORIENTATION);
+                    if (so != null) return so;
+                }
+            }
+        } catch (Throwable ignore) {}
+        return fallback;
     }
 
     private Surface create_virtual_surface() {
@@ -982,8 +1000,18 @@ public class HookMain implements IXposedHookLoadPackage {
         XposedHelpers.findAndHookMethod(hooked_class, "onOpened", CameraDevice.class, new XC_MethodHook() {
             @Override
             protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
-                need_recreate = true;
-                create_virtual_surface();
+                // 记录本次真正打开的相机 id（前/后摄）
+                if (param.args[0] instanceof CameraDevice) {
+                    try { c2_cameraId = ((CameraDevice) param.args[0]).getId(); } catch (Throwable ignore) {}
+                }
+                if (isComposite() && compositor != null) {
+                    // 翻转/重开：不重建 compositor（避免 stop 卡死），只按新摄像头更新朝向
+                    int[] ori = readCamOrientation();
+                    compositor.updateCameraOrientation(ori[0], ori[1] == 1);
+                } else {
+                    need_recreate = true;
+                    create_virtual_surface();
+                }
                 if (c2_player != null) {
                     c2_player.stop();
                     c2_player.reset();
