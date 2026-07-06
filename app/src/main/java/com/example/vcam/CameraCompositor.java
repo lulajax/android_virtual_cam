@@ -73,6 +73,7 @@ public class CameraCompositor implements SurfaceTexture.OnFrameAvailableListener
     private volatile boolean outputReady = false;
     private volatile boolean released = false;
     private int outW = 0, outH = 0;
+    private Surface appSurface;   // 保存输出 surface，翻转瞬间取到 0x0 时用它重建窗口自愈
 
     private static final String VS =
             "uniform mat4 uMVP;\nuniform mat4 uST;\n" +
@@ -153,6 +154,7 @@ public class CameraCompositor implements SurfaceTexture.OnFrameAvailableListener
         glHandler.post(new Runnable() {
             public void run() {
                 try {
+                    CameraCompositor.this.appSurface = appSurface;
                     if (window != EGL14.EGL_NO_SURFACE) { EGL14.eglDestroySurface(eglDisplay, window); window = EGL14.EGL_NO_SURFACE; }
                     window = EGL14.eglCreateWindowSurface(eglDisplay, eglConfig, appSurface, new int[]{EGL14.EGL_NONE}, 0);
                     EGL14.eglMakeCurrent(eglDisplay, window, window, eglContext);
@@ -225,11 +227,28 @@ public class CameraCompositor implements SurfaceTexture.OnFrameAvailableListener
         if (released || camTexture == null) return;
         if (st == overlayVideoST) { overlayHasFrame = true; return; }
         try {
-            if (!outputReady || window == EGL14.EGL_NO_SURFACE) {
+            if (!outputReady) {
                 // 还没输出：仍要消费帧避免相机缓冲卡死
                 EGL14.eglMakeCurrent(eglDisplay, pbuffer, pbuffer, eglContext);
                 camTexture.updateTexImage();
                 return;
+            }
+            // 翻转瞬间 app surface 的 buffer 还没定尺寸，startOutput 那次会拿到 0x0（甚至创建失败成
+            // NO_SURFACE）。若把 0x0 锁死就会永久渲染到零视口 → 画面冻结、需重开 app。这里每帧兜底：
+            // 用保存的 appSurface 重建 window 并重查尺寸，surface 恢复后自动复原（实测连翻多次均实时不卡）。
+            if (window == EGL14.EGL_NO_SURFACE || outW <= 0 || outH <= 0) {
+                EGL14.eglMakeCurrent(eglDisplay, pbuffer, pbuffer, eglContext);
+                camTexture.updateTexImage();
+                if (appSurface != null && appSurface.isValid()) {
+                    if (window != EGL14.EGL_NO_SURFACE) EGL14.eglDestroySurface(eglDisplay, window);
+                    window = EGL14.eglCreateWindowSurface(eglDisplay, eglConfig, appSurface, new int[]{EGL14.EGL_NONE}, 0);
+                    int[] wv = new int[1], hv = new int[1];
+                    EGL14.eglQuerySurface(eglDisplay, window, EGL14.EGL_WIDTH, wv, 0);
+                    EGL14.eglQuerySurface(eglDisplay, window, EGL14.EGL_HEIGHT, hv, 0);
+                    outW = wv[0]; outH = hv[0];
+                    if (outW > 0 && outH > 0) Log.i(TAG, "【VCAM】【comp】翻转后 0x0 已自愈 -> " + outW + "x" + outH);
+                }
+                if (window == EGL14.EGL_NO_SURFACE || outW <= 0 || outH <= 0) return;   // 仍未就绪，等下一帧
             }
             EGL14.eglMakeCurrent(eglDisplay, window, window, eglContext);
             camTexture.updateTexImage();
@@ -238,14 +257,18 @@ public class CameraCompositor implements SurfaceTexture.OnFrameAvailableListener
             GLES20.glClearColor(0, 0, 0, 1);
             GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT);
 
-            // 整体旋转矩阵（挂件用）
-            Matrix.setIdentityM(rotM, 0);
-            Matrix.rotateM(rotM, 0, outRot, 0, 0, 1);
-
             // 相机背景专用 MVP：整体旋转 + 前后摄 sensor 朝向补偿 + 前摄镜像
             Matrix.setIdentityM(camMvp, 0);
             Matrix.rotateM(camMvp, 0, outRot + camExtraRot, 0, 0, 1);
             if (camMirror) Matrix.scaleM(camMvp, 0, -1, 1, 1);
+
+            // 挂件也用同一套补偿：直播 app 对前摄画面会整体做一次垂直翻转显示，
+            // 相机背景靠 camExtraRot(180)+mirror 抵消所以正常，挂件若只用 outRot 就会被带得
+            // 上下颠倒（右上→右下、倒转）。让挂件跟随相机同样的旋转+镜像即可对齐。
+            // 后摄 extra=0/mirror=false，与只用 outRot 完全等价，不影响后摄。
+            Matrix.setIdentityM(rotM, 0);
+            Matrix.rotateM(rotM, 0, outRot + camExtraRot, 0, 0, 1);
+            if (camMirror) Matrix.scaleM(rotM, 0, -1, 1, 1);
 
             // 背景：真实相机（OES 全屏）
             GLES20.glUseProgram(camProgram);

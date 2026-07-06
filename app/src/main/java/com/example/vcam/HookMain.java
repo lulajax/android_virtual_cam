@@ -946,6 +946,9 @@ public class HookMain implements IXposedHookLoadPackage {
         }
         if (baseSensorOrientation < 0) baseSensorOrientation = sensorOri;
         int extra = (((sensorOri - baseSensorOrientation) % 360) + 360) % 360;
+        // 前后摄方向排查用：把本机实际的 sensor 朝向打出来，便于定位「前摄 180° 倒」
+        XposedBridge.log("【VCAM】【comp】朝向 id=" + c2_cameraId + " sensor=" + sensorOri
+                + " base(后摄)=" + baseSensorOrientation + " extra=" + extra + " front=" + isFront);
         return new int[]{extra, isFront};
     }
 
@@ -1049,6 +1052,11 @@ public class HookMain implements IXposedHookLoadPackage {
                 c2_reader_Surfcae = null;
                 c2_preview_Surfcae = null;
                 is_first_hook_build = true;
+                // 翻转（前后摄切换）时 app 常复用同一个 CaptureRequest.Builder，
+                // build hook 的 equals(c2_builder) 去重会跳过 process_camera2_play，
+                // 导致 startOutput 不再拿新预览 Surface 重建输出窗口 → 画面冻结、需重开 app。
+                // 相机每次重开都清掉，强制下一次 build 重新走一遍输出流程。
+                c2_builder = null;
                 XposedBridge.log("【VCAM】打开相机C2");
 
                 File file = new File(video_path + "virtual.mp4");
