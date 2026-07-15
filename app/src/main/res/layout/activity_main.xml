@@ -64,36 +64,7 @@
                     <TextView
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:text="① 目标 App（选完自动校正相机方向）"
-                        android:textSize="15sp"
-                        android:textStyle="bold"
-                        android:textColor="@color/text_primary"
-                        android:paddingBottom="6dp" />
-
-                    <TextView
-                        android:id="@+id/tv_target"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:text="点下方按钮选择"
-                        android:textSize="14sp"
-                        android:textColor="@color/text_primary"
-                        android:background="@drawable/select_box"
-                        android:padding="12dp" />
-
-                    <Button
-                        android:id="@+id/btn_pick_app"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:text="选择目标 App"
-                        android:textColor="@color/accent_purple"
-                        android:backgroundTint="@color/accent_purple_light"
-                        android:layout_marginTop="8dp"
-                        android:layout_marginBottom="16dp" />
-
-                    <TextView
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:text="② 选挂件（图片 / 视频）"
+                        android:text="① 选挂件（图片 / 视频）"
                         android:textSize="15sp"
                         android:textStyle="bold"
                         android:textColor="@color/text_primary"
@@ -120,7 +91,7 @@
                     <TextView
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:text="③ 拖动挂件调位置，滑块调大小"
+                        android:text="② 拖动挂件调位置，滑块调大小（都可超出框）"
                         android:textSize="15sp"
                         android:textStyle="bold"
                         android:textColor="@color/text_primary"
@@ -163,7 +134,7 @@
                         android:id="@+id/sb_size"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:max="90"
+                        android:max="200"
                         android:progress="35" />
 
                     <LinearLayout
@@ -216,7 +187,7 @@
                     <TextView
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:text="应用后强制停止目标 App 再重开生效。抖音开直播/拍摄方向不同，切过去点几下“相机旋转”再应用即可。"
+                        android:text="应用后重新进入拍摄/直播画面即生效。抖音开直播/拍摄方向不同，切过去点几下“相机旋转”再应用即可。"
                         android:textSize="12sp"
                         android:textColor="@color/text_secondary"
                         android:paddingTop="6dp" />
@@ -237,6 +208,44 @@
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
                 android:padding="14dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:background="@drawable/card_bg"
+                    android:padding="18dp"
+                    android:layout_marginBottom="12dp"
+                    android:elevation="1dp">
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="目标 App（选中后一般不用再改）"
+                        android:textSize="15sp"
+                        android:textStyle="bold"
+                        android:textColor="@color/text_primary"
+                        android:paddingBottom="6dp" />
+
+                    <TextView
+                        android:id="@+id/tv_target"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="点下方按钮选择"
+                        android:textSize="14sp"
+                        android:textColor="@color/text_primary"
+                        android:background="@drawable/select_box"
+                        android:padding="12dp" />
+
+                    <Button
+                        android:id="@+id/btn_pick_app"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="选择目标 App"
+                        android:textColor="@color/accent_purple"
+                        android:backgroundTint="@color/accent_purple_light"
+                        android:layout_marginTop="8dp" />
+                </LinearLayout>
 
                 <LinearLayout
                     android:layout_width="match_parent"

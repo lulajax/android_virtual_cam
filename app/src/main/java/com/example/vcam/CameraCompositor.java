@@ -68,6 +68,8 @@ public class CameraCompositor implements SurfaceTexture.OnFrameAvailableListener
     private int camProgram, ovProgram;
     private int camPos, camTex, camU_mvp, camU_st, camU_sampler;
     private int ovPos, ovTex, ovU_mvp, ovU_st, ovU_sampler;
+    private int ovVidProgram;                                       // 视频挂件专用（绿幕色键 OES）
+    private int ovVidPos, ovVidTex, ovVidU_mvp, ovVidU_st, ovVidU_sampler;
     private FloatBuffer quad;
 
     private volatile boolean outputReady = false;
@@ -86,6 +88,20 @@ public class CameraCompositor implements SurfaceTexture.OnFrameAvailableListener
     private static final String FS_2D =
             "precision mediump float;\nvarying vec2 vTex;\nuniform sampler2D sTex;\n" +
             "void main(){ gl_FragColor = texture2D(sTex, vTex); }\n";
+    // 视频挂件专用：绿幕色键抠图。把接近纯绿(0,255,0)的像素判为透明，露出背景（直播/相机画面）。
+    // Android 视频硬解不带 alpha，故用「绿底 + 色键」实现动态挂件的透明。
+    private static final String FS_OES_CHROMA =
+            "#extension GL_OES_EGL_image_external : require\nprecision mediump float;\n" +
+            "varying vec2 vTex;\nuniform samplerExternalOES sTex;\n" +
+            "void main(){\n" +
+            "  vec4 c = texture2D(sTex, vTex);\n" +
+            "  float key = c.g - max(c.r, c.b);\n" +            // 绿色主导程度
+            "  float a = 1.0 - smoothstep(0.15, 0.35, key);\n" + // 越绿越透明（边缘平滑过渡）
+            "  if (a < 0.03) discard;\n" +                        // 全绿像素直接丢弃
+            "  float spill = max(c.g - max(c.r, c.b), 0.0);\n" +  // despill：抑制半透边缘的绿溢出
+            "  c.g = c.g - spill;\n" +
+            "  gl_FragColor = vec4(c.rgb, a);\n" +
+            "}\n";
 
     /** 会话配置前调用：建 EGL + 相机 OES 纹理，产出相机输入 surface。
      *  @param extraRot 当前摄像头相对首个摄像头的 sensor 朝向补偿角（前后摄切换用）
@@ -118,6 +134,12 @@ public class CameraCompositor implements SurfaceTexture.OnFrameAvailableListener
                     ovU_mvp = GLES20.glGetUniformLocation(ovProgram, "uMVP");
                     ovU_st = GLES20.glGetUniformLocation(ovProgram, "uST");
                     ovU_sampler = GLES20.glGetUniformLocation(ovProgram, "sTex");
+                    ovVidProgram = buildProgram(VS, FS_OES_CHROMA);
+                    ovVidPos = GLES20.glGetAttribLocation(ovVidProgram, "aPos");
+                    ovVidTex = GLES20.glGetAttribLocation(ovVidProgram, "aTex");
+                    ovVidU_mvp = GLES20.glGetUniformLocation(ovVidProgram, "uMVP");
+                    ovVidU_st = GLES20.glGetUniformLocation(ovVidProgram, "uST");
+                    ovVidU_sampler = GLES20.glGetUniformLocation(ovVidProgram, "sTex");
                     float[] v = {-1,-1, 0,0,  1,-1, 1,0,  -1,1, 0,1,  1,1, 1,1};
                     quad = ByteBuffer.allocateDirect(v.length*4).order(ByteOrder.nativeOrder()).asFloatBuffer();
                     quad.put(v).position(0);
@@ -291,14 +313,18 @@ public class CameraCompositor implements SurfaceTexture.OnFrameAvailableListener
                 overlayVideoST.updateTexImage();
                 overlayVideoST.getTransformMatrix(ovStMatrix);
                 Matrix.multiplyMM(ovStTmp, 0, rot90tex, 0, ovStMatrix, 0);   // 方向校正（旋转在采样变换之后）
-                GLES20.glUseProgram(camProgram);
-                bindQuad(camPos, camTex);
-                GLES20.glUniformMatrix4fv(camU_mvp, 1, false, ovMvp, 0);
-                GLES20.glUniformMatrix4fv(camU_st, 1, false, ovStTmp, 0);
+                // 用绿幕色键 program 渲染视频挂件，并开启 alpha 混合，让绿底透出背景
+                GLES20.glUseProgram(ovVidProgram);
+                bindQuad(ovVidPos, ovVidTex);
+                GLES20.glUniformMatrix4fv(ovVidU_mvp, 1, false, ovMvp, 0);
+                GLES20.glUniformMatrix4fv(ovVidU_st, 1, false, ovStTmp, 0);
                 GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
                 GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, overlayVideoTex);
-                GLES20.glUniform1i(camU_sampler, 0);
+                GLES20.glUniform1i(ovVidU_sampler, 0);
+                GLES20.glEnable(GLES20.GL_BLEND);
+                GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA, GLES20.GL_ONE_MINUS_SRC_ALPHA);
                 GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4);
+                GLES20.glDisable(GLES20.GL_BLEND);
             } else if (overlayTexId >= 0) {
                 GLES20.glUseProgram(ovProgram);
                 bindQuad(ovPos, ovTex);

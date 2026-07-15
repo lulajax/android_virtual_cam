@@ -35,7 +35,9 @@ public class MainActivity extends Activity {
     private static final int REQ_PICK_VIDEO = 1001;
     private TextView tv_video, tv_status, tv_target;
     private EditText et_live_url;
-    private String selectedPkg = "com.ss.android.ugc.aweme";
+    private String selectedPkg = "com.zhiliaoapp.musically";   // 默认目标 App = TikTok
+    private android.content.SharedPreferences prefs;
+    private float restorePosX = -1f, restorePosY = -1f;        // >=0 时 loadOverlayThumb 用它恢复上次位置
     private File cachedVideo;
     private FlvVideoSource flvPreview;
     private volatile boolean applying = false;
@@ -96,6 +98,8 @@ public class MainActivity extends Activity {
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+        prefs = getSharedPreferences("vcam_cfg", MODE_PRIVATE);
+        selectedPkg = prefs.getString("pkg", selectedPkg);     // 恢复上次选的目标 App
 
         disable_switch = findViewById(R.id.switch2);
         play_sound_switch = findViewById(R.id.switch3);
@@ -170,6 +174,10 @@ public class MainActivity extends Activity {
         Button btn_pick_overlay = findViewById(R.id.btn_pick_overlay);
         Button btn_apply_composite = findViewById(R.id.btn_apply_composite);
         applyCamRotPreset(selectedPkg);
+        camRot = prefs.getInt("cam_rot", camRot);              // 上次手调的相机方向优先于预设
+        btn_cam_rot.setText("相机旋转（" + camRot + "°）");
+        ovRot = prefs.getInt("ov_rot", ovRot);
+        sb_size.setProgress(prefs.getInt("size", sb_size.getProgress()));
         btn_ov_rot.setText("挂件旋转（" + ovRot + "°）");
         btn_pick_overlay.setOnClickListener(v -> {
             Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
@@ -198,6 +206,49 @@ public class MainActivity extends Activity {
 
         // ===== 底部 Tab：合成 / 设置 =====
         setupBottomTabs();
+
+        restoreOverlay();   // 启动时恢复上次的挂件设置
+    }
+
+    /** 启动时恢复上次保存的挂件（文件/位置/尺寸/旋转，见 onPause→saveOverlay）。 */
+    private void restoreOverlay() {
+        if (prefs == null) return;
+        String path = prefs.getString("ov_path", null);
+        if (path == null) return;
+        File f = new File(path);
+        if (!f.exists()) return;
+        cachedOverlay = f;
+        overlayIsVideo = prefs.getBoolean("ov_video", false);
+        tv_overlay.setText("已选挂件：" + (overlayIsVideo ? "视频" : "图片") + " " + (cachedOverlay.length() / 1024) + " KB");
+        restorePosX = prefs.getFloat("pos_x", 0.6f);
+        restorePosY = prefs.getFloat("pos_y", 0.05f);
+        loadOverlayThumb();
+    }
+
+    /** 保存当前挂件配置，供下次启动恢复。 */
+    private void saveOverlay() {
+        if (prefs == null) return;
+        android.content.SharedPreferences.Editor e = prefs.edit();
+        e.putString("pkg", selectedPkg);
+        e.putInt("cam_rot", camRot);
+        e.putInt("ov_rot", ovRot);
+        if (sb_size != null) e.putInt("size", sb_size.getProgress());
+        if (cachedOverlay != null && cachedOverlay.exists()) {
+            e.putString("ov_path", cachedOverlay.getAbsolutePath());
+            e.putBoolean("ov_video", overlayIsVideo);
+        }
+        if (canvas != null && canvas.getWidth() > 0 && overlayThumb != null
+                && overlayThumb.getVisibility() == View.VISIBLE) {
+            e.putFloat("pos_x", overlayThumb.getX() / canvas.getWidth());
+            e.putFloat("pos_y", overlayThumb.getY() / canvas.getHeight());
+        }
+        e.apply();
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        saveOverlay();
     }
 
     private void setupBottomTabs() {
@@ -229,7 +280,7 @@ public class MainActivity extends Activity {
         if (tv_overlay_pos == null) return;
         if (canvas == null || canvas.getWidth() == 0 || overlayThumb == null
                 || overlayThumb.getVisibility() != android.view.View.VISIBLE) {
-            tv_overlay_pos.setText("尺寸 " + sb_size.getProgress() + "%（选挂件后可在上面拖动）");
+            tv_overlay_pos.setText("尺寸 " + sb_size.getProgress() + "%（选挂件后可在上面拖动，可拖出框）");
             return;
         }
         int cw = canvas.getWidth(), ch = canvas.getHeight();
@@ -251,8 +302,9 @@ public class MainActivity extends Activity {
                     dragDY = v.getY() - e.getRawY();
                     return true;
                 case android.view.MotionEvent.ACTION_MOVE:
-                    v.setX(clampf(e.getRawX() + dragDX, 0, canvas.getWidth() - v.getWidth()));
-                    v.setY(clampf(e.getRawY() + dragDY, 0, canvas.getHeight() - v.getHeight()));
+                    // 不 clamp，允许挂件拖出相机框
+                    v.setX(e.getRawX() + dragDX);
+                    v.setY(e.getRawY() + dragDY);
                     updatePosText();
                     return true;
                 case android.view.MotionEvent.ACTION_UP:
@@ -264,15 +316,12 @@ public class MainActivity extends Activity {
         });
     }
 
-    /** 尺寸滑块 → 挂件缩略图尺寸：滑块控宽度，高度按素材真实比例推，保持中心、clamp 在画布内。 */
+    /** 尺寸滑块 → 挂件缩略图尺寸：滑块控宽度，高按素材真实比例推，保持中心；不 clamp，允许超出相机框。 */
     private void applyThumbSize() {
         if (canvas == null || overlayThumb == null || canvas.getWidth() == 0) return;
-        final int cw = canvas.getWidth(), ch = canvas.getHeight();
+        final int cw = canvas.getWidth();
         int w = Math.max(24, Math.round(sb_size.getProgress() / 100f * cw));
         int h = Math.round(w * overlayAspect);
-        // 高超出画布就按高回推宽，始终保持素材比例
-        if (h > ch) { h = ch; w = Math.round(h / overlayAspect); }
-        if (w > cw) { w = cw; h = Math.round(w * overlayAspect); }
         final int fw = w, fh = h;
         final float ocx = overlayThumb.getX() + overlayThumb.getWidth() / 2f;
         final float ocy = overlayThumb.getY() + overlayThumb.getHeight() / 2f;
@@ -280,8 +329,8 @@ public class MainActivity extends Activity {
         lp.width = fw; lp.height = fh;
         overlayThumb.setLayoutParams(lp);
         overlayThumb.post(() -> {
-            overlayThumb.setX(clampf(ocx - fw / 2f, 0, cw - fw));
-            overlayThumb.setY(clampf(ocy - fh / 2f, 0, ch - fh));
+            overlayThumb.setX(ocx - fw / 2f);   // 保持中心，不 clamp 到画布内
+            overlayThumb.setY(ocy - fh / 2f);
             updatePosText();
         });
     }
@@ -306,8 +355,14 @@ public class MainActivity extends Activity {
                 applyOverlayRotation();   // 按当前角度设缩略图 + 框比例 + 尺寸
                 overlayThumb.setVisibility(android.view.View.VISIBLE);
                 overlayThumb.post(() -> {
-                    overlayThumb.setX(clampf(canvas.getWidth() * 0.6f, 0, canvas.getWidth() - overlayThumb.getWidth()));
-                    overlayThumb.setY(canvas.getHeight() * 0.05f);
+                    if (restorePosX >= 0) {   // 恢复上次保存的位置
+                        overlayThumb.setX(restorePosX * canvas.getWidth());
+                        overlayThumb.setY(restorePosY * canvas.getHeight());
+                        restorePosX = -1f;
+                    } else {                  // 新选的挂件：默认放右上区
+                        overlayThumb.setX(canvas.getWidth() * 0.6f);
+                        overlayThumb.setY(canvas.getHeight() * 0.05f);
+                    }
                     updatePosText();
                 });
             });
@@ -403,7 +458,7 @@ public class MainActivity extends Activity {
             os.writeBytes("exit\n");
             os.flush();
             int r = p.waitFor();
-            if (r == 0) return "✓ 已应用合成到 " + pkg + "（相机 " + camR + "° 挂件 " + ovR + "°）。\n强制停止该 App 后重开生效；方向不对就调旋转再点一次。";
+            if (r == 0) return "✓ 已应用合成到 " + pkg + "（相机 " + camR + "° 挂件 " + ovR + "°）。\n重新进入拍摄/直播画面即生效；方向不对就调旋转再点一次。";
             return "su 执行失败（code=" + r + "）";
         } catch (Exception e) {
             return "root 调用失败：" + e.getMessage();
