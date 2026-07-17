@@ -714,8 +714,9 @@ public class HookMain implements IXposedHookLoadPackage {
                 boolean ovIsVideo = ovVideo.exists();
                 String ovPath = ovIsVideo ? ovVideo.getAbsolutePath() : (video_path + "overlay.png");
                 int ovAngle = readOverlayAngle();
-                compositor.startOutput(out, ovPath, ovIsVideo, rect[0], rect[1], rect[2], rect[3], readLiveRot(), ovAngle);
-                XposedBridge.log("【VCAM】【comp】输出 video=" + ovIsVideo + " camRot=" + readLiveRot() + " ovRot=" + ovAngle);
+                String ovLiveUrl = readOverlayLiveUrl();
+                compositor.startOutput(out, ovPath, ovIsVideo, rect[0], rect[1], rect[2], rect[3], readLiveRot(), ovAngle, ovLiveUrl);
+                XposedBridge.log("【VCAM】【comp】输出 video=" + ovIsVideo + " live=" + (ovLiveUrl != null) + " camRot=" + readLiveRot() + " ovRot=" + ovAngle);
             }
             return;
         }
@@ -887,9 +888,27 @@ public class HookMain implements IXposedHookLoadPackage {
         return new File(Environment.getExternalStorageDirectory().getPath() + "/DCIM/Camera1/no-silent.jpg").exists();
     }
 
-    /** 合成模式：私有目录有 overlay.png（挂件图片）时启用——真实相机背景 + 挂件。 */
+    /** 合成模式：私有目录有 overlay.png/overlay.mp4（静态挂件）或 overlay_live_url.txt（实时挂件流）时启用。 */
     private boolean isComposite() {
-        return new File(video_path + "overlay.png").exists() || new File(video_path + "overlay.mp4").exists();
+        return new File(video_path + "overlay.png").exists()
+                || new File(video_path + "overlay.mp4").exists()
+                || readOverlayLiveUrl() != null;
+    }
+
+    /** 读 overlay_live_url.txt（http/https 开头才有效）——实时绿幕挂件流地址，供合成模式抠像叠加。 */
+    private String readOverlayLiveUrl() {
+        try {
+            File f = new File(video_path + "overlay_live_url.txt");
+            if (!f.exists()) return null;
+            java.io.BufferedReader r = new java.io.BufferedReader(new java.io.FileReader(f));
+            String line = r.readLine();
+            r.close();
+            if (line != null) line = line.trim();
+            if (line != null && line.startsWith("http")) return line;
+            return null;
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     /** 挂件方向校正角（overlay_rot.txt，默认 90）。 */

@@ -218,6 +218,8 @@ public class MainActivity extends Activity {
         });
         Button btn_apply_live = findViewById(R.id.btn_apply_live);
         btn_apply_live.setOnClickListener(v -> applyLive());
+        Button btn_apply_overlay = findViewById(R.id.btn_apply_overlay);
+        btn_apply_overlay.setOnClickListener(v -> applyOverlayLive());
 
         // ===== 底部 Tab：合成 / 直播源 / 设置 =====
         setupBottomTabs();
@@ -314,6 +316,53 @@ public class MainActivity extends Activity {
             runOnUiThread(() -> { tv_live_status.setText(r); sync_statue_with_files(); });
             applying = false;
         }).start();
+    }
+
+    /** 应用为合成挂件：真机相机背景 + 一路实时绿幕 FLV 抠像叠加（全帧）。方案 A。 */
+    private void applyOverlayLive() {
+        final String pkg = selectedPkg;
+        if (pkg == null || pkg.isEmpty()) { tv_live_status.setText("请先在“设置”页选择目标 App"); return; }
+        final String url = et_live_url.getText().toString().trim();
+        if (!url.startsWith("http")) { tv_live_status.setText("请填 http/https 开头的 HTTP-FLV 绿幕挂件地址"); return; }
+        if (applying) { tv_live_status.setText("正在处理中…"); return; }
+        applying = true;
+        final int rot = camRot;
+        final String placeholder = ensurePlaceholder().getAbsolutePath();
+        if (prefs != null) prefs.edit().putString("live_url", url).apply();
+        tv_live_status.setText("配置合成挂件…");
+        new Thread(() -> {
+            final String r = pushOverlayLive(pkg, url, placeholder, rot);
+            runOnUiThread(() -> { tv_live_status.setText(r); sync_statue_with_files(); });
+            applying = false;
+        }).start();
+    }
+
+    /** 写合成挂件配置：占位视频 + overlay_live_url + 全帧 rect + camRot；清整屏替换/静态挂件文件防串档。 */
+    private String pushOverlayLive(String pkg, String url, String placeholderVideo, int rot) {
+        String destDir = "/sdcard/Android/data/" + pkg + "/files/Camera1";
+        String priv = Environment.getExternalStorageDirectory().getAbsolutePath() + "/DCIM/Camera1/private_dir.jpg";
+        try {
+            Process p = Runtime.getRuntime().exec("su");
+            java.io.DataOutputStream os = new java.io.DataOutputStream(p.getOutputStream());
+            os.writeBytes("mkdir -p '" + destDir + "'\n");
+            os.writeBytes("cp '" + placeholderVideo + "' '" + destDir + "/virtual.mp4'\n");
+            os.writeBytes("chmod 666 '" + destDir + "/virtual.mp4'\n");
+            os.writeBytes("printf %s '" + url + "' > '" + destDir + "/overlay_live_url.txt'\n");
+            os.writeBytes("printf '%s %s %s %s' 0 0 1 1 > '" + destDir + "/overlay_rect.txt'\n");   // 全帧
+            os.writeBytes("printf %s '" + rot + "' > '" + destDir + "/live_rot.txt'\n");
+            os.writeBytes("printf %s 0 > '" + destDir + "/overlay_rot.txt'\n");
+            os.writeBytes("chmod 666 '" + destDir + "/overlay_live_url.txt' '" + destDir + "/overlay_rect.txt' '" + destDir + "/live_rot.txt' '" + destDir + "/overlay_rot.txt'\n");
+            // 清整屏替换 + 静态挂件，避免和合成模式串档
+            os.writeBytes("rm -f '" + destDir + "/live_url.txt' '" + destDir + "/overlay.png' '" + destDir + "/overlay.mp4'\n");
+            os.writeBytes("touch '" + priv + "'\n");
+            os.writeBytes("exit\n");
+            os.flush();
+            int r = p.waitFor();
+            if (r == 0) return "✓ 已配置合成挂件到 " + pkg + "（相机 " + rot + "°，绿幕抠像叠加）。\n强制停止该 App 后重开，一进相机即：真机相机 + 抠掉绿底的挂件。";
+            return "su 执行失败（code=" + r + "）——vcam 是否已授予 root？";
+        } catch (Exception e) {
+            return "root 调用失败：" + e.getMessage();
+        }
     }
 
     private void updatePosText() {
@@ -487,7 +536,7 @@ public class MainActivity extends Activity {
             os.writeBytes("mkdir -p '" + destDir + "'\n");
             os.writeBytes("cp '" + placeholder + "' '" + destDir + "/virtual.mp4'\n");   // 占位，激活 hook
             os.writeBytes("chmod 666 '" + destDir + "/virtual.mp4'\n");
-            os.writeBytes("rm -f '" + destDir + "/live_url.txt' '" + destDir + "/overlay.png' '" + destDir + "/overlay.mp4'\n");
+            os.writeBytes("rm -f '" + destDir + "/live_url.txt' '" + destDir + "/overlay.png' '" + destDir + "/overlay.mp4' '" + destDir + "/overlay_live_url.txt'\n");
             os.writeBytes("cp '" + ovSrc + "' '" + destDir + "/" + ovName + "'\n");
             os.writeBytes("chmod 666 '" + destDir + "/" + ovName + "'\n");
             os.writeBytes("printf '%s %s %s %s' '" + x + "' '" + y + "' '" + ow + "' '" + oh + "' > '" + destDir + "/overlay_rect.txt'\n");
@@ -647,7 +696,7 @@ public class MainActivity extends Activity {
             os.writeBytes("mkdir -p /sdcard/DCIM/Camera1\n");
             os.writeBytes("cp '" + src + "' /sdcard/DCIM/Camera1/virtual.mp4\n");
             os.writeBytes("chmod 666 /sdcard/DCIM/Camera1/virtual.mp4\n");
-            os.writeBytes("rm -f '" + destDir + "/live_url.txt'\n");
+            os.writeBytes("rm -f '" + destDir + "/live_url.txt' '" + destDir + "/overlay_live_url.txt' '" + destDir + "/overlay.png' '" + destDir + "/overlay.mp4'\n");
             os.writeBytes("printf %s '" + rot + "' > '" + destDir + "/live_rot.txt'\n");
             os.writeBytes("chmod 666 '" + destDir + "/live_rot.txt'\n");
             os.writeBytes("touch '" + priv + "'\n");
@@ -678,7 +727,7 @@ public class MainActivity extends Activity {
             os.writeBytes("printf %s '" + rot + "' > '" + destDir + "/live_rot.txt'\n");
             os.writeBytes("chmod 666 '" + destDir + "/live_rot.txt'\n");
             // 清合成模式挂件，否则 isComposite() 会抢占、直播源永远不启动
-            os.writeBytes("rm -f '" + destDir + "/overlay.png' '" + destDir + "/overlay.mp4' '" + destDir + "/overlay_rect.txt' '" + destDir + "/overlay_rot.txt'\n");
+            os.writeBytes("rm -f '" + destDir + "/overlay.png' '" + destDir + "/overlay.mp4' '" + destDir + "/overlay_rect.txt' '" + destDir + "/overlay_rot.txt' '" + destDir + "/overlay_live_url.txt'\n");
             os.writeBytes("touch '" + priv + "'\n");
             os.writeBytes("exit\n");
             os.flush();

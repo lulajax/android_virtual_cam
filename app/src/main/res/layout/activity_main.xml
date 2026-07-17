@@ -289,13 +289,23 @@
                         android:id="@+id/btn_apply_live"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:text="应用直播源到目标 App"
+                        android:text="应用直播源到目标 App（整屏替换）"
                         android:textSize="16sp"
                         android:textStyle="bold"
                         android:textColor="@color/white"
                         android:background="@drawable/btn_primary_bg"
                         android:padding="14dp"
                         android:layout_marginTop="14dp" />
+
+                    <Button
+                        android:id="@+id/btn_apply_overlay"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="应用为合成挂件（真机相机 + 绿幕抠像）"
+                        android:textSize="15sp"
+                        android:textColor="@color/accent_purple"
+                        android:backgroundTint="@color/accent_purple_light"
+                        android:layout_marginTop="10dp" />
 
                     <TextView
                         android:id="@+id/tv_live_status"

@@ -50,6 +50,7 @@ public class CameraCompositor implements SurfaceTexture.OnFrameAvailableListener
     private SurfaceTexture overlayVideoST;
     private Surface overlayVideoSurface;
     private android.media.MediaPlayer overlayPlayer;
+    private FlvVideoSource overlayFlv;                             // 实时挂件源（HTTP-FLV 绿幕流）
     private volatile boolean overlayHasFrame = false;
     private final float[] ovStMatrix = new float[16];
     private final float[] rot90tex = new float[16];
@@ -172,7 +173,7 @@ public class CameraCompositor implements SurfaceTexture.OnFrameAvailableListener
     }
 
     /** build 时调用：拿到 app 显示 surface，建窗口 EGLSurface，加载挂件，开始合成。 */
-    public void startOutput(final Surface appSurface, final String overlayPath, final boolean isVideo, final float x, final float y, final float w, final float h, final int rot, final int ovRot) {
+    public void startOutput(final Surface appSurface, final String overlayPath, final boolean isVideo, final float x, final float y, final float w, final float h, final int rot, final int ovRot, final String overlayLiveUrl) {
         glHandler.post(new Runnable() {
             public void run() {
                 try {
@@ -194,9 +195,10 @@ public class CameraCompositor implements SurfaceTexture.OnFrameAvailableListener
                     // 先释放上一次的挂件资源，避免翻转反复调用 startOutput 泄漏
                     // （尤其 MediaPlayer 占着硬件解码器，堆几次就耗尽 → 卡死）
                     releaseOverlay();
-                    overlayIsVideo = isVideo;
-                    if (overlayPath != null && isVideo) {
-                        // 视频挂件：OES 纹理 + SurfaceTexture，MediaPlayer 循环静音播放
+                    final boolean useLive = overlayLiveUrl != null && overlayLiveUrl.startsWith("http");
+                    overlayIsVideo = isVideo || useLive;
+                    if (useLive || (overlayPath != null && isVideo)) {
+                        // 视频挂件：OES 纹理 + SurfaceTexture；本地文件走 MediaPlayer，实时源走 FlvVideoSource（同一 surface）
                         int[] t = new int[1];
                         GLES20.glGenTextures(1, t, 0);
                         overlayVideoTex = t[0];
@@ -208,14 +210,24 @@ public class CameraCompositor implements SurfaceTexture.OnFrameAvailableListener
                         overlayVideoST = new SurfaceTexture(overlayVideoTex);
                         overlayVideoST.setOnFrameAvailableListener(CameraCompositor.this, glHandler);
                         overlayVideoSurface = new Surface(overlayVideoST);
-                        overlayPlayer = new android.media.MediaPlayer();
-                        overlayPlayer.setSurface(overlayVideoSurface);
-                        overlayPlayer.setLooping(true);
-                        overlayPlayer.setVolume(0, 0);
-                        overlayPlayer.setDataSource(overlayPath);
-                        overlayPlayer.prepare();
-                        overlayPlayer.start();
-                        Log.i(TAG, "【VCAM】【comp】视频挂件启动 " + overlayPath);
+                        if (useLive) {
+                            // 实时绿幕挂件流：HTTP-FLV 解码到同一 overlayVideoSurface，方向交给 rot90tex/ovRot
+                            overlayFlv = new FlvVideoSource();
+                            overlayFlv.setSurface(overlayVideoSurface);
+                            overlayFlv.setAudioEnabled(false);
+                            overlayFlv.setRotation(0);
+                            overlayFlv.start(overlayLiveUrl);
+                            Log.i(TAG, "【VCAM】【comp】实时挂件流启动 " + overlayLiveUrl);
+                        } else {
+                            overlayPlayer = new android.media.MediaPlayer();
+                            overlayPlayer.setSurface(overlayVideoSurface);
+                            overlayPlayer.setLooping(true);
+                            overlayPlayer.setVolume(0, 0);
+                            overlayPlayer.setDataSource(overlayPath);
+                            overlayPlayer.prepare();
+                            overlayPlayer.start();
+                            Log.i(TAG, "【VCAM】【comp】视频挂件启动 " + overlayPath);
+                        }
                     } else if (overlayPath != null) {
                         Bitmap bmp = BitmapFactory.decodeFile(overlayPath);
                         if (bmp != null) {
@@ -355,6 +367,7 @@ public class CameraCompositor implements SurfaceTexture.OnFrameAvailableListener
 
     /** 释放挂件资源（视频 MediaPlayer/SurfaceTexture/纹理 或图片纹理）。须在 GL 线程、上下文 current 时调用。 */
     private void releaseOverlay() {
+        try { if (overlayFlv != null) { overlayFlv.stopDecode(); overlayFlv = null; } } catch (Exception ignored) {}
         try { if (overlayPlayer != null) { overlayPlayer.stop(); overlayPlayer.release(); overlayPlayer = null; } } catch (Exception ignored) {}
         try { if (overlayVideoSurface != null) { overlayVideoSurface.release(); overlayVideoSurface = null; } } catch (Exception ignored) {}
         try { if (overlayVideoST != null) { overlayVideoST.release(); overlayVideoST = null; } } catch (Exception ignored) {}
@@ -368,6 +381,7 @@ public class CameraCompositor implements SurfaceTexture.OnFrameAvailableListener
         if (glHandler != null) {
             glHandler.post(new Runnable() {
                 public void run() {
+                    try { if (overlayFlv != null) { overlayFlv.stopDecode(); overlayFlv = null; } } catch (Exception ignored) {}
                     try { if (overlayPlayer != null) { overlayPlayer.stop(); overlayPlayer.release(); overlayPlayer = null; } } catch (Exception ignored) {}
                     try { if (overlayVideoSurface != null) overlayVideoSurface.release(); } catch (Exception ignored) {}
                     try { if (overlayVideoST != null) overlayVideoST.release(); } catch (Exception ignored) {}
