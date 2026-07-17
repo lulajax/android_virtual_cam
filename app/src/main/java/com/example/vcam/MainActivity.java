@@ -35,6 +35,8 @@ public class MainActivity extends Activity {
     private static final int REQ_PICK_VIDEO = 1001;
     private TextView tv_video, tv_status, tv_target;
     private EditText et_live_url;
+    private TextView tv_live_status;
+    private Button btn_live_rot;
     private String selectedPkg = "com.zhiliaoapp.musically";   // 默认目标 App = TikTok
     private android.content.SharedPreferences prefs;
     private float restorePosX = -1f, restorePosY = -1f;        // >=0 时 loadOverlayThumb 用它恢复上次位置
@@ -188,7 +190,7 @@ public class MainActivity extends Activity {
         });
         btn_cam_rot.setOnClickListener(v -> {
             camRot = (camRot + 90) % 360;
-            btn_cam_rot.setText("相机旋转（" + camRot + "°）");
+            refreshRotButtons();
         });
         btn_ov_rot.setOnClickListener(v -> {
             ovRot = (ovRot + 90) % 360;
@@ -204,7 +206,20 @@ public class MainActivity extends Activity {
         updatePosText();
         btn_apply_composite.setOnClickListener(v -> applyComposite());
 
-        // ===== 底部 Tab：合成 / 设置 =====
+        // ===== 直播源（HTTP-FLV）控件 =====
+        et_live_url = findViewById(R.id.et_live_url);
+        tv_live_status = findViewById(R.id.tv_live_status);
+        btn_live_rot = findViewById(R.id.btn_live_rot);
+        et_live_url.setText(prefs.getString("live_url", ""));
+        refreshRotButtons();   // 相机旋转与合成模式共用 camRot，同步两个按钮文案
+        btn_live_rot.setOnClickListener(v -> {
+            camRot = (camRot + 90) % 360;
+            refreshRotButtons();
+        });
+        Button btn_apply_live = findViewById(R.id.btn_apply_live);
+        btn_apply_live.setOnClickListener(v -> applyLive());
+
+        // ===== 底部 Tab：合成 / 直播源 / 设置 =====
         setupBottomTabs();
 
         restoreOverlay();   // 启动时恢复上次的挂件设置
@@ -230,6 +245,7 @@ public class MainActivity extends Activity {
         if (prefs == null) return;
         android.content.SharedPreferences.Editor e = prefs.edit();
         e.putString("pkg", selectedPkg);
+        if (et_live_url != null) e.putString("live_url", et_live_url.getText().toString().trim());
         e.putInt("cam_rot", camRot);
         e.putInt("ov_rot", ovRot);
         if (sb_size != null) e.putInt("size", sb_size.getProgress());
@@ -253,27 +269,51 @@ public class MainActivity extends Activity {
 
     private void setupBottomTabs() {
         final TextView tabComposite = findViewById(R.id.tab_composite);
+        final TextView tabLive = findViewById(R.id.tab_live);
         final TextView tabSettings = findViewById(R.id.tab_settings);
         final View pageComposite = findViewById(R.id.page_composite);
+        final View pageLive = findViewById(R.id.page_live);
         final View pageSettings = findViewById(R.id.page_settings);
+        final TextView[] tabs = {tabComposite, tabLive, tabSettings};
+        final View[] pages = {pageComposite, pageLive, pageSettings};
+        tabComposite.setOnClickListener(v -> selectTab(0, tabs, pages));
+        tabLive.setOnClickListener(v -> selectTab(1, tabs, pages));
+        tabSettings.setOnClickListener(v -> selectTab(2, tabs, pages));
+    }
+
+    private void selectTab(int idx, TextView[] tabs, View[] pages) {
         final int active = getResources().getColor(R.color.accent_purple);
         final int inactive = getResources().getColor(R.color.text_secondary);
-        tabComposite.setOnClickListener(v -> {
-            pageComposite.setVisibility(View.VISIBLE);
-            pageSettings.setVisibility(View.GONE);
-            tabComposite.setTextColor(active);
-            tabComposite.setTypeface(null, android.graphics.Typeface.BOLD);
-            tabSettings.setTextColor(inactive);
-            tabSettings.setTypeface(null, android.graphics.Typeface.NORMAL);
-        });
-        tabSettings.setOnClickListener(v -> {
-            pageComposite.setVisibility(View.GONE);
-            pageSettings.setVisibility(View.VISIBLE);
-            tabSettings.setTextColor(active);
-            tabSettings.setTypeface(null, android.graphics.Typeface.BOLD);
-            tabComposite.setTextColor(inactive);
-            tabComposite.setTypeface(null, android.graphics.Typeface.NORMAL);
-        });
+        for (int i = 0; i < pages.length; i++) {
+            pages[i].setVisibility(i == idx ? View.VISIBLE : View.GONE);
+            tabs[i].setTextColor(i == idx ? active : inactive);
+            tabs[i].setTypeface(null, i == idx ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL);
+        }
+    }
+
+    /** 相机旋转与合成模式共用 camRot，同步刷新两页的旋转按钮文案。 */
+    private void refreshRotButtons() {
+        if (btn_cam_rot != null) btn_cam_rot.setText("相机旋转（" + camRot + "°）");
+        if (btn_live_rot != null) btn_live_rot.setText("相机旋转（" + camRot + "°）");
+    }
+
+    /** 应用直播源：占位视频 + live_url + live_rot(camRot)，并清 overlay.* 退出合成模式。 */
+    private void applyLive() {
+        final String pkg = selectedPkg;
+        if (pkg == null || pkg.isEmpty()) { tv_live_status.setText("请先在“设置”页选择目标 App"); return; }
+        final String url = et_live_url.getText().toString().trim();
+        if (!url.startsWith("http")) { tv_live_status.setText("请填 http/https 开头的 HTTP-FLV 地址"); return; }
+        if (applying) { tv_live_status.setText("正在处理中…"); return; }
+        applying = true;
+        final int rot = camRot;
+        final String placeholder = ensurePlaceholder().getAbsolutePath();
+        if (prefs != null) prefs.edit().putString("live_url", url).apply();
+        tv_live_status.setText("配置直播源…");
+        new Thread(() -> {
+            final String r = pushLive(pkg, url, placeholder, rot);
+            runOnUiThread(() -> { tv_live_status.setText(r); sync_statue_with_files(); });
+            applying = false;
+        }).start();
     }
 
     private void updatePosText() {
@@ -406,7 +446,7 @@ public class MainActivity extends Activity {
         if (pkg == null) return;
         if (pkg.equals("com.ss.android.ugc.aweme")) camRot = 0;          // 抖音
         else if (pkg.equals("com.zhiliaoapp.musically")) camRot = 90;    // TikTok
-        if (btn_cam_rot != null) btn_cam_rot.setText("相机旋转（" + camRot + "°）");
+        refreshRotButtons();
     }
 
     /** 应用合成：真实相机背景 + 挂件，写配置到目标私有目录。 */
@@ -637,12 +677,14 @@ public class MainActivity extends Activity {
             os.writeBytes("chmod 666 '" + destDir + "/live_url.txt'\n");
             os.writeBytes("printf %s '" + rot + "' > '" + destDir + "/live_rot.txt'\n");
             os.writeBytes("chmod 666 '" + destDir + "/live_rot.txt'\n");
+            // 清合成模式挂件，否则 isComposite() 会抢占、直播源永远不启动
+            os.writeBytes("rm -f '" + destDir + "/overlay.png' '" + destDir + "/overlay.mp4' '" + destDir + "/overlay_rect.txt' '" + destDir + "/overlay_rot.txt'\n");
             os.writeBytes("touch '" + priv + "'\n");
             os.writeBytes("exit\n");
             os.flush();
             int r = p.waitFor();
             if (r == 0) {
-                return "✓ 已配置直播流到 " + pkg + "。\n强制停止该 App 后重开，一进相机即拉流。";
+                return "✓ 已配置直播源到 " + pkg + "（相机 " + rot + "°）。\n强制停止该 App 后重开，一进相机即拉流。方向不对就调“相机旋转”再点一次。";
             }
             return "su 执行失败（code=" + r + "）——vcam 是否已授予 root？";
         } catch (Exception e) {

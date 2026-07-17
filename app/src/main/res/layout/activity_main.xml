@@ -195,6 +195,128 @@
             </LinearLayout>
         </ScrollView>
 
+        <!-- ===== 直播源页 ===== -->
+        <ScrollView
+            android:id="@+id/page_live"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:fillViewport="true"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="14dp">
+
+                <!-- 标题 -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:background="@drawable/card_bg"
+                    android:padding="18dp"
+                    android:layout_marginBottom="12dp"
+                    android:elevation="1dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="虚拟摄像头 · 直播源（HTTP-FLV）"
+                        android:textSize="20sp"
+                        android:textStyle="bold"
+                        android:textColor="@color/text_primary" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="拉取内容机推的 HTTP-FLV 流，整屏替换目标 App 相机"
+                        android:textSize="13sp"
+                        android:textColor="@color/text_secondary"
+                        android:paddingTop="4dp" />
+                </LinearLayout>
+
+                <!-- 直播源主卡 -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:background="@drawable/card_bg"
+                    android:padding="18dp"
+                    android:layout_marginBottom="12dp"
+                    android:elevation="1dp">
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="① 填内容机推流地址（http 开头）"
+                        android:textSize="15sp"
+                        android:textStyle="bold"
+                        android:textColor="@color/text_primary"
+                        android:paddingBottom="6dp" />
+
+                    <EditText
+                        android:id="@+id/et_live_url"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:hint="http://192.168.x.x:8080/live.flv"
+                        android:inputType="textUri"
+                        android:maxLines="2"
+                        android:textSize="14sp"
+                        android:textColor="@color/text_primary"
+                        android:background="@drawable/select_box"
+                        android:padding="12dp" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="② 相机旋转（画面歪 / 方向不对就点这个调，和合成模式一致）"
+                        android:textSize="15sp"
+                        android:textStyle="bold"
+                        android:textColor="@color/text_primary"
+                        android:paddingTop="16dp"
+                        android:paddingBottom="8dp" />
+
+                    <Button
+                        android:id="@+id/btn_live_rot"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="相机旋转（90°）"
+                        android:textColor="@color/accent_purple"
+                        android:backgroundTint="@color/accent_purple_light" />
+
+                    <Button
+                        android:id="@+id/btn_apply_live"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="应用直播源到目标 App"
+                        android:textSize="16sp"
+                        android:textStyle="bold"
+                        android:textColor="@color/white"
+                        android:background="@drawable/btn_primary_bg"
+                        android:padding="14dp"
+                        android:layout_marginTop="14dp" />
+
+                    <TextView
+                        android:id="@+id/tv_live_status"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text=""
+                        android:textSize="13sp"
+                        android:textColor="@color/success_green"
+                        android:paddingTop="10dp" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="目标 App 在“设置”页选择。应用后强制停止目标 App 再重开，一进相机即拉流。方向不对就调“相机旋转”再点一次。"
+                        android:textSize="12sp"
+                        android:textColor="@color/text_secondary"
+                        android:paddingTop="6dp" />
+                </LinearLayout>
+            </LinearLayout>
+        </ScrollView>
+
         <!-- ===== 设置页 ===== -->
         <ScrollView
             android:id="@+id/page_settings"
@@ -329,6 +451,18 @@
             android:textSize="15sp"
             android:textStyle="bold"
             android:textColor="@color/accent_purple" />
+
+        <TextView
+            android:id="@+id/tab_live"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="直播源"
+            android:gravity="center"
+            android:paddingTop="14dp"
+            android:paddingBottom="14dp"
+            android:textSize="15sp"
+            android:textColor="@color/text_secondary" />
 
         <TextView
             android:id="@+id/tab_settings"
